@@ -244,6 +244,7 @@ def detect_food(image_pil):
         return {}, None
 
     temp_path = None
+    raw_predictions = []
 
     try:
         img_w, img_h = image_pil.size
@@ -273,6 +274,10 @@ def detect_food(image_pil):
                 cls_name = str(result.names[cls_id]).strip().lower()
                 conf = float(box.conf[0])
                 xyxy = [float(v) for v in box.xyxy[0].detach().cpu().tolist()]
+                raw_predictions.append({
+                    "class": cls_name,
+                    "confidence": round(conf, 4),
+                })
 
                 # Opsional untuk versi berikutnya: jika model sudah dilatih dengan class tray/nampan,
                 # app otomatis memakai bbox tray sebagai pembanding porsi.
@@ -348,9 +353,21 @@ def detect_food(image_pil):
         # This only fixes the displayed color and does not change detection results.
         if annotated is not None:
             annotated = annotated[..., ::-1]
+        st.session_state.model_debug = {
+            "model_path": str(MODEL_PATH),
+            "model_size_mb": round(MODEL_PATH.stat().st_size / (1024 * 1024), 2) if MODEL_PATH.exists() else 0,
+            "model_classes": [str(model.names[i]) for i in sorted(model.names)],
+            "raw_prediction_count": len(raw_predictions),
+            "raw_predictions": raw_predictions[:20],
+        }
         return detected, annotated
 
     except Exception as e:
+        st.session_state.model_debug = {
+            "model_path": str(MODEL_PATH),
+            "model_size_mb": round(MODEL_PATH.stat().st_size / (1024 * 1024), 2) if MODEL_PATH.exists() else 0,
+            "error": str(e),
+        }
         st.error(f"Deteksi gagal: {e}")
         return {}, None
 
@@ -1937,6 +1954,9 @@ def render_report_tab(sekolah, kode):
                 st.image(res["annotated"], caption="Visualisasi Deteksi AI", use_container_width=True)
 
             render_detection_list(detected)
+            if st.session_state.get("model_debug"):
+                with st.expander("Debug model"):
+                    st.json(st.session_state.model_debug)
         else:
             st.markdown("""
             <div style="background:#F8FAFC;border:2px dashed #BFDBFE;border-radius:14px;padding:56px 24px;text-align:center;color:#94A3B8;">
