@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+plotly
+pillow
+ultralytics
+groq
+opencv-python
