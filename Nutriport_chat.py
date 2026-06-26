@@ -16,6 +16,7 @@ from pathlib import Path
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 APP_DIR = Path(__file__).resolve().parent
+APP_VERSION = "deploy-debug-2026-06-26-0318"
 MODEL_FILENAME = os.getenv("NUTRIPORT_MODEL_PATH", "best.pt")
 MODEL_PATH = Path(MODEL_FILENAME)
 if not MODEL_PATH.is_absolute():
@@ -289,6 +290,7 @@ def load_model():
                 return model
             except Exception as e:
                 st.session_state.model_debug = {
+                    "app_version": APP_VERSION,
                     "model_path": str(MODEL_PATH),
                     "model_exists": MODEL_PATH.exists(),
                     "model_size_mb": round(MODEL_PATH.stat().st_size / (1024 * 1024), 2) if MODEL_PATH.exists() else 0,
@@ -300,6 +302,7 @@ def load_model():
                 st.error(f"Model YOLO gagal dimuat: {e}")
                 return None
         st.session_state.model_debug = {
+            "app_version": APP_VERSION,
             "model_path": str(MODEL_PATH),
             "model_exists": False,
             "app_dir": str(APP_DIR),
@@ -430,8 +433,13 @@ def detect_food(image_pil):
         if annotated is not None:
             annotated = annotated[..., ::-1]
         st.session_state.model_debug = {
+            "app_version": APP_VERSION,
             "model_path": str(MODEL_PATH),
+            "model_exists": MODEL_PATH.exists(),
             "model_size_mb": round(MODEL_PATH.stat().st_size / (1024 * 1024), 2) if MODEL_PATH.exists() else 0,
+            "app_dir": str(APP_DIR),
+            "working_directory": os.getcwd(),
+            "available_pt_files": [p.name for p in APP_DIR.glob("*.pt")],
             "model_classes": [str(model.names[i]) for i in sorted(model.names)],
             "raw_prediction_count": len(raw_predictions),
             "raw_predictions": raw_predictions[:20],
@@ -440,8 +448,13 @@ def detect_food(image_pil):
 
     except Exception as e:
         st.session_state.model_debug = {
+            "app_version": APP_VERSION,
             "model_path": str(MODEL_PATH),
+            "model_exists": MODEL_PATH.exists(),
             "model_size_mb": round(MODEL_PATH.stat().st_size / (1024 * 1024), 2) if MODEL_PATH.exists() else 0,
+            "app_dir": str(APP_DIR),
+            "working_directory": os.getcwd(),
+            "available_pt_files": [p.name for p in APP_DIR.glob("*.pt")],
             "error": str(e),
         }
         st.error(f"Deteksi gagal: {e}")
@@ -2314,6 +2327,7 @@ def render_report_tab(sekolah, kode):
             <div class="work-card-title">1. Upload Foto Menu</div>
             <div class="work-card-desc">Gunakan foto nampan dari atas dengan seluruh komponen terlihat jelas.</div>
         """, unsafe_allow_html=True)
+        st.caption(f"Versi app: {APP_VERSION} | Model: {MODEL_PATH.name}")
 
         uploaded = st.file_uploader(
             "Pilih foto nampan makanan",
@@ -2380,7 +2394,18 @@ def render_report_tab(sekolah, kode):
 
             render_detection_list(detected)
             if st.session_state.get("model_debug"):
-                with st.expander("Debug model"):
+                debug = st.session_state.model_debug
+                raw_count = int(debug.get("raw_prediction_count", 0) or 0)
+                if debug.get("model_exists") is False:
+                    st.error("Model best.pt tidak kebaca di server Streamlit. Cek branch deploy dan pastikan best.pt ada di repository.")
+                elif raw_count == 0:
+                    st.warning("Model berhasil dimuat, tapi YOLO tidak menemukan objek pada foto ini. Coba cek kualitas foto atau confidence model.")
+                elif raw_count > 0 and not detected:
+                    st.warning("YOLO menemukan objek, tapi tidak ada yang masuk kategori Nutriport. Cek mapping class di raw_predictions.")
+                else:
+                    st.success(f"Model aktif dan membaca {raw_count} objek mentah.")
+
+                with st.expander("Debug model - kirim screenshot bagian ini kalau masih gagal", expanded=True):
                     st.json(st.session_state.model_debug)
         else:
             st.markdown("""
