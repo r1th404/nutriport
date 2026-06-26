@@ -24,6 +24,48 @@ FOOD_CLASSES = ("buah", "lauk", "makanan_pokok", "sayur", "susu")
 TRAY_CLASSES = ("tray", "nampan", "nampan_makanan")
 DETECTION_CONFIDENCE = 0.25
 
+MODEL_CLASS_TO_FOOD_CATEGORY = {
+    "buah": "buah",
+    "lauk": "lauk",
+    "makanan_pokok": "makanan_pokok",
+    "sayur": "sayur",
+    "susu": "susu",
+    "anggur": "buah",
+    "apel": "buah",
+    "jeruk": "buah",
+    "kelengkeng": "buah",
+    "kurma": "buah",
+    "melon": "buah",
+    "pisang": "buah",
+    "semangka": "buah",
+    "stroberi": "buah",
+    "ayam goreng": "lauk",
+    "ayam_goreng": "lauk",
+    "daging_sapi": "lauk",
+    "edamame": "lauk",
+    "tahu": "lauk",
+    "telur goreng": "lauk",
+    "telur_goreng": "lauk",
+    "telur rebus": "lauk",
+    "telur_rebus": "lauk",
+    "tempe": "lauk",
+    "jagung": "makanan_pokok",
+    "kentang": "makanan_pokok",
+    "mie": "makanan_pokok",
+    "nasi": "makanan_pokok",
+    "roti": "makanan_pokok",
+    "capcay_sayur": "sayur",
+    "mix_vegetables": "sayur",
+    "sayur_kacangpanjang": "sayur",
+    "sayur_labu": "sayur",
+    "sayur_pakcoy": "sayur",
+    "selada": "sayur",
+    "timun": "sayur",
+    "tomat": "sayur",
+    "kacang_polong": "sayur",
+    "susu": "susu",
+}
+
 # Ambang porsi awal berbasis persentase luas bounding box terhadap tray.
 # Angka ini bersifat heuristic/MVP dan sebaiknya dikalibrasi lagi dengan ahli gizi
 # atau standar porsi MBG yang dipakai instansi terkait.
@@ -217,6 +259,14 @@ def get_portion_status(cls_name, area_pct):
     return "Layak" if area_pct >= min_pct else "Kurang"
 
 
+def map_model_class_to_food_category(cls_name):
+    """Ubah class spesifik YOLO menjadi kategori komponen MBG di aplikasi."""
+    normalized = str(cls_name).strip().lower()
+    return MODEL_CLASS_TO_FOOD_CATEGORY.get(normalized) or MODEL_CLASS_TO_FOOD_CATEGORY.get(
+        normalized.replace(" ", "_")
+    )
+
+
 def load_model():
     if st.session_state.model is None:
         if MODEL_PATH.exists():
@@ -224,17 +274,38 @@ def load_model():
                 from ultralytics import YOLO
                 model = YOLO(str(MODEL_PATH))
                 model_classes = tuple(str(model.names[i]).strip().lower() for i in sorted(model.names))
-                missing_classes = [cls for cls in FOOD_CLASSES if cls not in model_classes]
-                if missing_classes:
+                mapped_categories = {
+                    map_model_class_to_food_category(cls)
+                    for cls in model_classes
+                    if map_model_class_to_food_category(cls)
+                }
+                missing_categories = [cls for cls in FOOD_CLASSES if cls not in mapped_categories]
+                if missing_categories:
                     raise ValueError(
-                        f"Class wajib model tidak lengkap. Hilang: {missing_classes}. "
+                        f"Kategori wajib model tidak lengkap. Hilang: {missing_categories}. "
                         f"Class model saat ini: {model_classes}."
                     )
                 st.session_state.model = model
                 return model
             except Exception as e:
+                st.session_state.model_debug = {
+                    "model_path": str(MODEL_PATH),
+                    "model_exists": MODEL_PATH.exists(),
+                    "model_size_mb": round(MODEL_PATH.stat().st_size / (1024 * 1024), 2) if MODEL_PATH.exists() else 0,
+                    "app_dir": str(APP_DIR),
+                    "working_directory": os.getcwd(),
+                    "available_pt_files": [p.name for p in APP_DIR.glob("*.pt")],
+                    "error": str(e),
+                }
                 st.error(f"Model YOLO gagal dimuat: {e}")
                 return None
+        st.session_state.model_debug = {
+            "model_path": str(MODEL_PATH),
+            "model_exists": False,
+            "app_dir": str(APP_DIR),
+            "working_directory": os.getcwd(),
+            "available_pt_files": [p.name for p in APP_DIR.glob("*.pt")],
+        }
         st.error(f"File model tidak ditemukan: {MODEL_PATH}")
     return st.session_state.model
 
@@ -273,10 +344,12 @@ def detect_food(image_pil):
             for box in result.boxes:
                 cls_id = int(box.cls[0])
                 cls_name = str(result.names[cls_id]).strip().lower()
+                food_category = map_model_class_to_food_category(cls_name)
                 conf = float(box.conf[0])
                 xyxy = [float(v) for v in box.xyxy[0].detach().cpu().tolist()]
                 raw_predictions.append({
                     "class": cls_name,
+                    "mapped_category": food_category,
                     "confidence": round(conf, 4),
                 })
 
@@ -290,11 +363,12 @@ def detect_food(image_pil):
                     })
                     continue
 
-                if cls_name not in FOOD_CLASSES:
+                if not food_category:
                     continue
 
                 raw_food_items.append({
-                    "class": cls_name,
+                    "class": food_category,
+                    "model_class": cls_name,
                     "conf": conf,
                     "bbox": xyxy,
                 })
@@ -319,6 +393,7 @@ def detect_food(image_pil):
 
             grouped[cls_name].append({
                 "conf": item["conf"],
+                "model_class": item["model_class"],
                 "bbox": item["bbox"],
                 "area": visible_area,
                 "area_pct": area_pct,
@@ -1364,6 +1439,46 @@ div[data-testid="stForm"] button {
     font-weight: 700 !important;
 }
 
+div.st-key-nutriport_chat_fixed {
+    position: fixed !important;
+    right: 24px !important;
+    bottom: 24px !important;
+    z-index: 999999 !important;
+    width: min(460px, calc(100vw - 32px)) !important;
+    max-width: min(460px, calc(100vw - 32px)) !important;
+}
+div.st-key-nutriport_chat_fixed .chat-widget-panel {
+    background: #FFFFFF !important;
+    border: 1px solid #BFDBFE !important;
+    border-radius: 20px !important;
+    box-shadow: 0 22px 56px rgba(30,58,95,0.24) !important;
+    padding: 16px !important;
+    margin-top: 10px !important;
+}
+div.st-key-nutriport_chat_fixed div.st-key-nutriport_chat_toggle {
+    display: flex !important;
+    justify-content: flex-end !important;
+    width: 100% !important;
+}
+div.st-key-nutriport_chat_fixed div.st-key-nutriport_chat_toggle button {
+    width: 64px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 0 12px !important;
+    background: #FFFFFF !important;
+}
+@media (max-width: 640px) {
+    div.st-key-nutriport_chat_fixed {
+        right: 12px !important;
+        bottom: 12px !important;
+        width: calc(100vw - 24px) !important;
+        max-width: calc(100vw - 24px) !important;
+    }
+    div.st-key-nutriport_chat_fixed .chat-widget-history {
+        max-height: 300px !important;
+    }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -1810,10 +1925,8 @@ def generate_chatbot_reply(user_message, history):
 
 def render_chatbot_widget():
     """Widget chatbot bantuan/guideline mengambang di pojok kanan bawah."""
-    _, chat_col = st.columns([3.2, 1])
-    with chat_col:
-        st.markdown('<span class="chat-widget-anchor"></span>', unsafe_allow_html=True)
-        toggle_label = "x" if st.session_state.chat_open else "💬"
+    with st.container(key="nutriport_chat_fixed"):
+        toggle_label = "x" if st.session_state.chat_open else "Chat"
         if st.button(toggle_label, use_container_width=True, key="nutriport_chat_toggle"):
             st.session_state.chat_open = not st.session_state.chat_open
             st.rerun()
