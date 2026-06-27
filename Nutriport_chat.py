@@ -1460,12 +1460,23 @@ div.st-key-nutriport_chat_fixed {
     width: min(460px, calc(100vw - 32px)) !important;
     max-width: min(460px, calc(100vw - 32px)) !important;
 }
-div.st-key-nutriport_chat_fixed .chat-widget-panel {
-    background: #FFFFFF !important;
+div.st-key-nutriport_chat_fixed:has(.chat-widget-panel) {
+    background: linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%) !important;
     border: 1px solid #BFDBFE !important;
-    border-radius: 20px !important;
+    border-radius: 22px !important;
     box-shadow: 0 22px 56px rgba(30,58,95,0.24) !important;
     padding: 16px !important;
+}
+div.st-key-nutriport_chat_fixed:has(.chat-widget-panel) [data-testid="stVerticalBlock"],
+div.st-key-nutriport_chat_fixed:has(.chat-widget-panel) [data-testid="stVerticalBlockBorderWrapper"] {
+    background: transparent !important;
+}
+div.st-key-nutriport_chat_fixed .chat-widget-panel {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
     margin-top: 10px !important;
 }
 div.st-key-nutriport_chat_fixed div.st-key-nutriport_chat_toggle {
@@ -1479,6 +1490,14 @@ div.st-key-nutriport_chat_fixed div.st-key-nutriport_chat_toggle button {
     min-height: 44px !important;
     padding: 0 12px !important;
     background: #FFFFFF !important;
+}
+div.st-key-nutriport_chat_fixed:has(.chat-widget-panel) div.st-key-nutriport_chat_toggle button {
+    background: #EFF6FF !important;
+}
+div.st-key-nutriport_chat_fixed:has(.chat-widget-panel) input {
+    background: #FFFFFF !important;
+    border: 1px solid #DBEAFE !important;
+    border-radius: 12px !important;
 }
 @media (max-width: 640px) {
     div.st-key-nutriport_chat_fixed {
